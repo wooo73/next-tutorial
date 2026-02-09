@@ -2,8 +2,8 @@
 
 ## 이 챕터에서 배우는 것
 - Docker로 PostgreSQL 실행하기
-- Prisma ORM으로 DB 스키마 정의
-- 테이블 생성 (마이그레이션)
+- TypeORM으로 엔티티(테이블) 정의
+- 테이블 자동 생성 (synchronize)
 - 시드 데이터 넣기
 
 ---
@@ -52,19 +52,28 @@ docker exec -it blog-db psql -U blog -d blog
 # psql 프롬프트가 뜨면 성공, \q로 나가기
 ```
 
-## 2. Prisma 설정
+## 2. TypeORM 설정
 
-### Prisma 초기화
+### 패키지 설치
 
 ```bash
-npx prisma init
+npm install typeorm reflect-metadata pg
 ```
 
-두 가지 파일이 생긴다:
-- `prisma/schema.prisma` - DB 스키마 정의
-- `.env` - DB 연결 정보
+### tsconfig.json 수정
 
-### .env 수정
+TypeORM은 데코레이터를 사용하므로, `tsconfig.json`에 옵션을 추가한다:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+### .env 작성
 
 ```env
 # .env
@@ -73,109 +82,192 @@ DATABASE_URL="postgresql://blog:blog1234@localhost:5432/blog"
 
 > **ERP 비교**: ERP는 Supabase URL을 `.env.local`에 넣는다. 원리는 같다.
 
-## 3. 스키마 정의
+## 3. 엔티티 정의
 
-### Prisma 스키마란?
+### TypeORM 엔티티란?
 
-코드로 DB 테이블을 정의하는 것이다. SQL로 `CREATE TABLE` 하는 대신 Prisma 문법을 쓴다.
+클래스로 DB 테이블을 정의하는 것이다. SQL로 `CREATE TABLE` 하는 대신 TypeScript 클래스를 쓴다.
 
 ```
-Prisma 스키마 → (마이그레이션) → PostgreSQL 테이블
+TypeORM 엔티티 (클래스) → (synchronize) → PostgreSQL 테이블
 ```
 
-### `prisma/schema.prisma`
+### `entities/user.entity.ts`
 
-```prisma
-// prisma/schema.prisma
+```typescript
+// entities/user.entity.ts
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn, OneToMany,
+} from 'typeorm'
+import { Post } from './post.entity'
+import { Comment } from './comment.entity'
 
-generator client {
-  provider = "prisma-client-js"
-}
+@Entity('users')
+export class User {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+  @Column({ type: 'varchar', unique: true })
+  email: string
 
-// ─── 사용자 ────────────────────────────
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String                        // bcrypt 해시
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  @Column({ type: 'varchar' })
+  password: string  // bcrypt 해시
 
-  posts    Post[]
-  comments Comment[]
+  @Column({ type: 'varchar' })
+  name: string
 
-  @@map("users")  // 실제 테이블명은 snake_case
-}
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date
 
-// ─── 카테고리 ───────────────────────────
-model Category {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  slug      String   @unique             // URL용: "tech", "life"
-  createdAt DateTime @default(now()) @map("created_at")
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date
 
-  posts Post[]
+  @OneToMany(() => Post, (post) => post.author)
+  posts: Post[]
 
-  @@map("categories")
-}
-
-// ─── 게시글 ────────────────────────────
-model Post {
-  id          String    @id @default(uuid())
-  title       String
-  content     String                       // 마크다운 본문
-  published   Boolean   @default(false)    // 공개 여부
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at") // soft delete
-
-  authorId   String   @map("author_id")
-  author     User     @relation(fields: [authorId], references: [id])
-
-  categoryId String?  @map("category_id")
-  category   Category? @relation(fields: [categoryId], references: [id])
-
-  comments Comment[]
-
-  @@map("posts")
-}
-
-// ─── 댓글 ──────────────────────────────
-model Comment {
-  id        String   @id @default(uuid())
-  content   String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  authorId String @map("author_id")
-  author   User   @relation(fields: [authorId], references: [id])
-
-  postId String @map("post_id")
-  post   Post   @relation(fields: [postId], references: [id])
-
-  @@map("comments")
+  @OneToMany(() => Comment, (comment) => comment.author)
+  comments: Comment[]
 }
 ```
 
-### 스키마 해설
+### `entities/category.entity.ts`
 
-| Prisma | SQL | 설명 |
-|--------|-----|------|
-| `@id` | `PRIMARY KEY` | 기본키 |
-| `@default(uuid())` | `DEFAULT gen_random_uuid()` | 자동 UUID 생성 |
-| `@unique` | `UNIQUE` | 중복 불가 |
-| `@default(now())` | `DEFAULT NOW()` | 생성 시각 자동 입력 |
-| `@updatedAt` | (Prisma가 자동 관리) | 수정할 때마다 자동 갱신 |
-| `@map("snake_case")` | - | 실제 컬럼명 지정 |
-| `@@map("table_name")` | - | 실제 테이블명 지정 |
-| `@relation` | `FOREIGN KEY` | 테이블 간 관계 |
+```typescript
+// entities/category.entity.ts
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, OneToMany,
+} from 'typeorm'
+import { Post } from './post.entity'
 
-> **ERP 비교**: ERP의 `types/supabase.ts`에 타입이 정의되고, DB 스키마는 Supabase Dashboard에서 관리한다. Prisma는 스키마 + 타입을 한 파일에서 관리하는 장점이 있다.
+@Entity('categories')
+export class Category {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column({ type: 'varchar', unique: true })
+  name: string
+
+  @Column({ type: 'varchar', unique: true })
+  slug: string  // URL용: "tech", "life"
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date
+
+  @OneToMany(() => Post, (post) => post.category)
+  posts: Post[]
+}
+```
+
+### `entities/post.entity.ts`
+
+```typescript
+// entities/post.entity.ts
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn,
+} from 'typeorm'
+import { User } from './user.entity'
+import { Category } from './category.entity'
+import { Comment } from './comment.entity'
+
+@Entity('posts')
+export class Post {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column({ type: 'varchar' })
+  title: string
+
+  @Column({ type: 'text' })
+  content: string  // 마크다운 본문
+
+  @Column({ type: 'boolean', default: false })
+  published: boolean  // 공개 여부
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date
+
+  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null  // soft delete
+
+  @Column({ type: 'uuid', name: 'author_id' })
+  authorId: string
+
+  @ManyToOne(() => User, (user) => user.posts)
+  @JoinColumn({ name: 'author_id' })
+  author: User
+
+  @Column({ type: 'uuid', name: 'category_id', nullable: true })
+  categoryId: string | null
+
+  @ManyToOne(() => Category, (category) => category.posts)
+  @JoinColumn({ name: 'category_id' })
+  category: Category | null
+
+  @OneToMany(() => Comment, (comment) => comment.post)
+  comments: Comment[]
+}
+```
+
+### `entities/comment.entity.ts`
+
+```typescript
+// entities/comment.entity.ts
+import {
+  Entity, PrimaryGeneratedColumn, Column,
+  CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn,
+} from 'typeorm'
+import { User } from './user.entity'
+import { Post } from './post.entity'
+
+@Entity('comments')
+export class Comment {
+  @PrimaryGeneratedColumn('uuid')
+  id: string
+
+  @Column({ type: 'text' })
+  content: string
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date
+
+  @Column({ type: 'uuid', name: 'author_id' })
+  authorId: string
+
+  @ManyToOne(() => User, (user) => user.comments)
+  @JoinColumn({ name: 'author_id' })
+  author: User
+
+  @Column({ type: 'uuid', name: 'post_id' })
+  postId: string
+
+  @ManyToOne(() => Post, (post) => post.comments)
+  @JoinColumn({ name: 'post_id' })
+  post: Post
+}
+```
+
+### 엔티티 해설
+
+| TypeORM 데코레이터 | SQL | 설명 |
+|-------------------|-----|------|
+| `@PrimaryGeneratedColumn('uuid')` | `PRIMARY KEY DEFAULT gen_random_uuid()` | 자동 UUID 생성 기본키 |
+| `@Column({ unique: true })` | `UNIQUE` | 중복 불가 |
+| `@CreateDateColumn()` | `DEFAULT NOW()` | 생성 시각 자동 입력 |
+| `@UpdateDateColumn()` | (TypeORM이 자동 관리) | 수정할 때마다 자동 갱신 |
+| `@Column({ name: 'snake_case' })` | - | 실제 컬럼명 지정 |
+| `@Entity('table_name')` | - | 실제 테이블명 지정 |
+| `@ManyToOne` / `@OneToMany` | `FOREIGN KEY` | 테이블 간 관계 |
+
+> **ERP 비교**: ERP의 `types/supabase.ts`에 타입이 정의되고, DB 스키마는 Supabase Dashboard에서 관리한다. TypeORM은 엔티티 클래스 하나로 스키마 + 타입을 동시에 정의하는 장점이 있다.
 
 ### 테이블 관계 (ER 다이어그램)
 
@@ -196,17 +288,58 @@ Category (1) ──── (N) Post
 - Post 1개에 여러 Comment가 달릴 수 있다 (1:N)
 - Category 1개에 여러 Post가 속할 수 있다 (1:N)
 
-## 4. 마이그레이션 (테이블 생성)
+## 4. DataSource 설정 (DB 연결)
 
-```bash
-npx prisma migrate dev --name init
+### `lib/database.ts`
+
+```typescript
+// lib/database.ts
+import 'reflect-metadata'
+import { DataSource } from 'typeorm'
+import { User } from '@/entities/user.entity'
+import { Post } from '@/entities/post.entity'
+import { Category } from '@/entities/category.entity'
+import { Comment } from '@/entities/comment.entity'
+
+const AppDataSource = new DataSource({
+  type: 'postgres',
+  url: process.env.DATABASE_URL,
+  entities: [User, Post, Category, Comment],
+  synchronize: process.env.NODE_ENV !== 'production',  // 개발 중 자동 테이블 생성
+  logging: process.env.NODE_ENV !== 'production',
+})
+
+// 싱글턴: 연결을 재사용
+const globalForDb = globalThis as unknown as {
+  dbInitialized: boolean
+}
+
+export async function getDataSource(): Promise<DataSource> {
+  if (!AppDataSource.isInitialized) {
+    await AppDataSource.initialize()
+    globalForDb.dbInitialized = true
+  }
+  return AppDataSource
+}
+
 ```
 
-이 명령어가 하는 것:
-1. `schema.prisma`를 읽는다
-2. SQL로 변환한다 (`prisma/migrations/` 폴더에 저장)
-3. PostgreSQL에 테이블을 만든다
-4. Prisma Client를 생성한다 (TypeScript 타입 자동 생성)
+**왜 이렇게 복잡하게?**
+
+Next.js 개발 서버는 코드가 바뀔 때마다 모듈을 다시 로드한다.
+그때마다 `DataSource.initialize()`를 하면 DB 연결이 계속 쌓인다.
+`isInitialized`를 체크해서 연결을 재사용한다.
+
+> **ERP 비교**: ERP의 `lib/supabase.ts`도 같은 이유로 클라이언트를 싱글턴으로 만든다.
+
+## 5. 테이블 자동 생성
+
+TypeORM은 `synchronize: true` 옵션으로 엔티티를 기반으로 테이블을 자동 생성한다.
+개발 서버를 실행하면 테이블이 자동으로 만들어진다.
+
+```bash
+npm run dev
+```
 
 ```bash
 # 확인: 테이블이 잘 만들어졌나
@@ -221,188 +354,164 @@ docker exec -it blog-db psql -U blog -d blog -c "\dt"
 #  public | users      | table | blog
 ```
 
-## 5. Prisma Client 설정
-
-### `lib/prisma.ts`
-
-```typescript
-// lib/prisma.ts
-import { PrismaClient } from '@prisma/client'
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
-}
-```
-
-**왜 이렇게 복잡하게?**
-
-Next.js 개발 서버는 코드가 바뀔 때마다 모듈을 다시 로드한다.
-그때마다 `new PrismaClient()`를 하면 DB 연결이 계속 쌓인다.
-`globalThis`에 저장하면 연결을 재사용한다.
-
-> **ERP 비교**: ERP의 `lib/supabase.ts`도 같은 이유로 클라이언트를 싱글턴으로 만든다.
+> **주의**: `synchronize: true`는 개발용이다. 프로덕션에서는 마이그레이션을 사용해야 한다.
 
 ## 6. 시드 데이터
 
 개발할 때 빈 DB로 하면 불편하니까, 테스트 데이터를 넣어두자.
 
-### `prisma/seed.ts`
+### `seeds/seed.ts`
 
 ```typescript
-// prisma/seed.ts
-import { PrismaClient } from '@prisma/client'
+// seeds/seed.ts
+import 'reflect-metadata'
+import { DataSource } from 'typeorm'
 import bcrypt from 'bcryptjs'
+import { User } from '../entities/user.entity'
+import { Post } from '../entities/post.entity'
+import { Category } from '../entities/category.entity'
+import { Comment } from '../entities/comment.entity'
 
-const prisma = new PrismaClient()
+const AppDataSource = new DataSource({
+  type: 'postgres',
+  url: process.env.DATABASE_URL || 'postgresql://blog:blog1234@localhost:5432/blog',
+  entities: [User, Post, Category, Comment],
+  synchronize: true,
+})
 
 async function main() {
+  await AppDataSource.initialize()
+
+  const userRepo = AppDataSource.getRepository(User)
+  const categoryRepo = AppDataSource.getRepository(Category)
+  const postRepo = AppDataSource.getRepository(Post)
+
   // 카테고리 생성
-  const techCategory = await prisma.category.create({
-    data: { name: '기술', slug: 'tech' },
-  })
-  const lifeCategory = await prisma.category.create({
-    data: { name: '일상', slug: 'life' },
-  })
+  const techCategory = categoryRepo.create({ name: '기술', slug: 'tech' })
+  await categoryRepo.save(techCategory)
+
+  const lifeCategory = categoryRepo.create({ name: '일상', slug: 'life' })
+  await categoryRepo.save(lifeCategory)
 
   // 테스트 유저 생성 (비밀번호: test1234)
   const hashedPassword = await bcrypt.hash('test1234', 10)
-  const user = await prisma.user.create({
-    data: {
-      email: 'test@example.com',
-      password: hashedPassword,
-      name: '테스트 유저',
-    },
+  const user = userRepo.create({
+    email: 'test@example.com',
+    password: hashedPassword,
+    name: '테스트 유저',
   })
+  await userRepo.save(user)
 
   // 게시글 생성
-  await prisma.post.createMany({
-    data: [
-      {
-        title: 'Next.js 시작하기',
-        content: '# Next.js란?\n\nReact 기반의 풀스택 프레임워크입니다.',
-        published: true,
-        authorId: user.id,
-        categoryId: techCategory.id,
-      },
-      {
-        title: 'TypeScript 기초',
-        content: '# TypeScript\n\n타입이 있는 JavaScript입니다.',
-        published: true,
-        authorId: user.id,
-        categoryId: techCategory.id,
-      },
-      {
-        title: '오늘의 일기',
-        content: '오늘은 날씨가 좋았다.',
-        published: true,
-        authorId: user.id,
-        categoryId: lifeCategory.id,
-      },
-      {
-        title: '임시저장 글',
-        content: '아직 작성 중...',
-        published: false,  // 비공개
-        authorId: user.id,
-      },
-    ],
-  })
+  const posts = postRepo.create([
+    {
+      title: 'Next.js 시작하기',
+      content: '# Next.js란?\n\nReact 기반의 풀스택 프레임워크입니다.',
+      published: true,
+      authorId: user.id,
+      categoryId: techCategory.id,
+    },
+    {
+      title: 'TypeScript 기초',
+      content: '# TypeScript\n\n타입이 있는 JavaScript입니다.',
+      published: true,
+      authorId: user.id,
+      categoryId: techCategory.id,
+    },
+    {
+      title: '오늘의 일기',
+      content: '오늘은 날씨가 좋았다.',
+      published: true,
+      authorId: user.id,
+      categoryId: lifeCategory.id,
+    },
+    {
+      title: '임시저장 글',
+      content: '아직 작성 중...',
+      published: false,  // 비공개
+      authorId: user.id,
+    },
+  ])
+  await postRepo.save(posts)
+
+  // 댓글 생성
+  const commentRepo = AppDataSource.getRepository(Comment)
+  const comments = commentRepo.create([
+    {
+      content: '좋은 글이네요! 감사합니다.',
+      authorId: user.id,
+      postId: posts[0].id,
+    },
+    {
+      content: 'TypeScript 정말 유용하죠!',
+      authorId: user.id,
+      postId: posts[1].id,
+    },
+  ])
+  await commentRepo.save(comments)
 
   console.log('시드 데이터 생성 완료!')
+  await AppDataSource.destroy()
 }
 
-main()
-  .catch((e) => {
-    console.error(e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
-```
-
-### package.json에 시드 스크립트 추가
-
-```json
-{
-  "prisma": {
-    "seed": "npx tsx prisma/seed.ts"
-  }
-}
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})
 ```
 
 ### 시드 실행
 
 ```bash
 npm install -D tsx    # TypeScript 실행기
-npx prisma db seed
+npx tsx seeds/seed.ts
 ```
 
-## 7. Prisma Studio (DB 시각적 확인)
-
-```bash
-npx prisma studio
-```
-
-브라우저에서 `http://localhost:5555`가 열린다.
-테이블과 데이터를 시각적으로 확인/수정할 수 있다.
-
-## 8. Prisma 사용법 미리보기
+## 7. TypeORM 사용법 미리보기
 
 다음 챕터에서 자세히 쓰겠지만, 맛보기:
 
 ```typescript
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 
 // 전체 조회
-const posts = await prisma.post.findMany()
+const ds = await getDataSource()
+const postRepo = ds.getRepository(Post)
+const posts = await postRepo.find()
 
-// 조건 조회
-const published = await prisma.post.findMany({
+// 조건 조회 (관계 포함)
+const published = await postRepo.find({
   where: { published: true },
-  include: { author: true, category: true },  // JOIN
-  orderBy: { createdAt: 'desc' },
+  relations: { author: true, category: true },  // JOIN
+  order: { createdAt: 'DESC' },
 })
 
 // 단건 조회
-const post = await prisma.post.findUnique({
-  where: { id: 'some-uuid' },
-})
+const post = await postRepo.findOneBy({ id: 'some-uuid' })
 
 // 생성
-const newPost = await prisma.post.create({
-  data: {
-    title: '새 글',
-    content: '내용',
-    authorId: user.id,
-  },
+const newPost = postRepo.create({
+  title: '새 글',
+  content: '내용',
+  authorId: user.id,
 })
+await postRepo.save(newPost)
 
 // 수정
-await prisma.post.update({
-  where: { id: 'some-uuid' },
-  data: { title: '수정된 제목' },
-})
+await postRepo.update({ id: 'some-uuid' }, { title: '수정된 제목' })
 
 // 삭제 (soft delete)
-await prisma.post.update({
-  where: { id: 'some-uuid' },
-  data: { deletedAt: new Date() },
-})
+await postRepo.update({ id: 'some-uuid' }, { deletedAt: new Date() })
 ```
 
 ## 정리
 
 이 챕터에서 한 것:
 1. ✅ Docker로 PostgreSQL 실행
-2. ✅ Prisma 스키마 정의 (User, Category, Post, Comment)
-3. ✅ 마이그레이션으로 테이블 생성
-4. ✅ Prisma Client 싱글턴 설정
+2. ✅ TypeORM 엔티티 정의 (User, Category, Post, Comment)
+3. ✅ synchronize로 테이블 자동 생성
+4. ✅ DataSource 싱글턴 설정
 5. ✅ 시드 데이터 생성
 
 ---

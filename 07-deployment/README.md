@@ -89,11 +89,7 @@ openssl rand -base64 32
 DATABASE_URL="postgresql://postgres.[ref]:[password]@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
 ```
 
-4. Prisma 마이그레이션 실행
-
-```bash
-DATABASE_URL="위의URL" npx prisma migrate deploy
-```
+4. TypeORM이 `synchronize` 또는 마이그레이션으로 테이블을 자동 생성한다.
 
 ## 5. 배포 후 확인
 
@@ -113,7 +109,7 @@ https://your-blog.vercel.app/register  → 회원가입
     │
     └── API 요청 → Vercel Serverless Function → Next.js API Route → DB 조회
                                                       │
-                                                 Prisma ORM
+                                                 TypeORM
                                                       │
                                               PostgreSQL (Supabase)
 ```
@@ -131,13 +127,13 @@ https://your-blog.vercel.app/register  → 회원가입
 [블로그 아키텍처]
 
 브라우저 → Next.js (Vercel)
-              ├── 서버 컴포넌트 → Prisma → PostgreSQL
-              └── API Route     → Prisma → PostgreSQL
+              ├── 서버 컴포넌트 → TypeORM → PostgreSQL
+              └── API Route     → TypeORM → PostgreSQL
            + JWT (인증)
 ```
 
 구조가 거의 같다. 차이점은:
-- Supabase 클라이언트 vs Prisma (ORM 선택)
+- Supabase 클라이언트 vs TypeORM (ORM 선택)
 - Clerk vs 직접 JWT 구현 (인증 방식)
 
 ## 정리
@@ -148,7 +144,7 @@ https://your-blog.vercel.app/register  → 회원가입
 |------|----------|
 | 00 | App Router, 서버/클라이언트 컴포넌트 |
 | 01 | 프로젝트 셋업, shadcn/ui |
-| 02 | Docker PostgreSQL, Prisma 스키마 |
+| 02 | Docker PostgreSQL, TypeORM 엔티티 |
 | 03 | bcrypt, JWT, 쿠키 세션, 미들웨어 |
 | 04 | RESTful API, Zod 검증, Next.js 15 params |
 | 05 | 서버 컴포넌트 DB 조회, 동적 라우트 |

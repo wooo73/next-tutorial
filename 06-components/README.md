@@ -311,9 +311,9 @@ Next.js는 서버 컴포넌트의 결과를 **캐싱**한다.
 ┌─────────────────────────────────────────────────┐
 │  서버 컴포넌트 (DB 직접 접근)                      │
 │                                                   │
-│  / (홈) ← prisma.post.findMany()                 │
-│  /posts ← prisma.post.findMany() + 페이지네이션   │
-│  /posts/[id] ← prisma.post.findUnique()          │
+│  / (홈) ← postRepo.find()                        │
+│  /posts ← postRepo.findAndCount() + 페이지네이션  │
+│  /posts/[id] ← postRepo.findOne()               │
 └──────────────────────┬──────────────────────────┘
                        │ 포함
 ┌──────────────────────▼──────────────────────────┐

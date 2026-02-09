@@ -89,7 +89,8 @@ export async function requireAuth() {
 ```typescript
 // app/api/posts/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 import { requireAuth } from '@/lib/api-utils'
 import { createPostSchema } from '@/lib/validations'
 
@@ -100,29 +101,24 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '10')
   const categoryId = searchParams.get('categoryId')
 
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+
   // where 조건 만들기
-  const where = {
+  const where: Record<string, unknown> = {
     published: true,
-    deletedAt: null,                     // soft delete된 글 제외
-    ...(categoryId && { categoryId }),   // 카테고리 필터 (있을 때만)
+    deletedAt: IsNull(),                  // soft delete된 글 제외
+    ...(categoryId && { categoryId }),    // 카테고리 필터 (있을 때만)
   }
 
   // 병렬로 데이터 + 총 개수 조회
-  const [posts, total] = await Promise.all([
-    prisma.post.findMany({
-      where,
-      include: {
-        author: {
-          select: { id: true, name: true },  // 비밀번호 제외!
-        },
-        category: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.post.count({ where }),
-  ])
+  const [posts, total] = await postRepo.findAndCount({
+    where,
+    relations: { author: true, category: true },
+    order: { createdAt: 'DESC' },
+    skip: (page - 1) * limit,
+    take: limit,
+  })
 
   return NextResponse.json({
     posts,
@@ -153,18 +149,21 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. DB에 저장
-    const post = await prisma.post.create({
-      data: {
-        ...result.data,
-        authorId: user.userId,
-      },
-      include: {
-        author: { select: { id: true, name: true } },
-        category: true,
-      },
+    const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+    const post = postRepo.create({
+      ...result.data,
+      authorId: user.userId,
+    })
+    await postRepo.save(post)
+
+    // 관계 데이터 포함해서 다시 조회
+    const saved = await postRepo.findOne({
+      where: { id: post.id },
+      relations: { author: true, category: true },
     })
 
-    return NextResponse.json({ post }, { status: 201 })
+    return NextResponse.json({ post: saved }, { status: 201 })
 
   } catch (error) {
     console.error('게시글 작성 에러:', error)
@@ -203,7 +202,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
 ```typescript
 // app/api/posts/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { IsNull } from 'typeorm'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 import { requireAuth } from '@/lib/api-utils'
 import { updatePostSchema } from '@/lib/validations'
 
@@ -215,18 +216,16 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
 
-  const post = await prisma.post.findUnique({
-    where: { id, deletedAt: null },
-    include: {
-      author: { select: { id: true, name: true } },
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const post = await postRepo.findOne({
+    where: { id, deletedAt: IsNull() },
+    relations: {
+      author: true,
       category: true,
-      comments: {
-        include: {
-          author: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      },
+      comments: { author: true },
     },
+    order: { comments: { createdAt: 'DESC' } },
   })
 
   if (!post) {
@@ -246,7 +245,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   if (error) return error
 
   // 게시글 존재 + 작성자 확인
-  const existing = await prisma.post.findUnique({ where: { id } })
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const existing = await postRepo.findOneBy({ id })
   if (!existing || existing.deletedAt) {
     return NextResponse.json(
       { error: '게시글을 찾을 수 없습니다' },
@@ -269,13 +270,11 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     )
   }
 
-  const post = await prisma.post.update({
+  await postRepo.update({ id }, result.data)
+
+  const post = await postRepo.findOne({
     where: { id },
-    data: result.data,
-    include: {
-      author: { select: { id: true, name: true } },
-      category: true,
-    },
+    relations: { author: true, category: true },
   })
 
   return NextResponse.json({ post })
@@ -287,7 +286,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const { user, error } = await requireAuth()
   if (error) return error
 
-  const existing = await prisma.post.findUnique({ where: { id } })
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const existing = await postRepo.findOneBy({ id })
   if (!existing || existing.deletedAt) {
     return NextResponse.json(
       { error: '게시글을 찾을 수 없습니다' },
@@ -302,16 +303,13 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   // soft delete: 실제로 지우지 않고 deletedAt만 설정
-  await prisma.post.update({
-    where: { id },
-    data: { deletedAt: new Date() },
-  })
+  await postRepo.update({ id }, { deletedAt: new Date() })
 
   return NextResponse.json({ message: '삭제되었습니다' })
 }
 ```
 
-> **ERP 비교**: ERP도 `deleted_at`으로 soft delete한다. DB 규칙 문서에 "Soft deletes use deleted_at"이라고 되어있다.
+> **ERP 비교**: ERP도 `deleted_at`으로 soft delete한다.
 
 ## 6. 카테고리 API
 
@@ -320,17 +318,25 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 ```typescript
 // app/api/categories/route.ts
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Category } from '@/entities/category.entity'
 
 export async function GET() {
-  const categories = await prisma.category.findMany({
-    include: {
-      _count: { select: { posts: true } },  // 게시글 수 포함
-    },
-    orderBy: { name: 'asc' },
+  const ds = await getDataSource()
+  const categoryRepo = ds.getRepository(Category)
+  const categories = await categoryRepo.find({
+    relations: { posts: true },
+    order: { name: 'ASC' },
   })
 
-  return NextResponse.json({ categories })
+  // 게시글 수를 포함해서 응답
+  const result = categories.map(cat => ({
+    ...cat,
+    _count: { posts: cat.posts?.length ?? 0 },
+    posts: undefined,  // 게시글 전체 데이터는 제외
+  }))
+
+  return NextResponse.json({ categories: result })
 }
 ```
 

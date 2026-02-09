@@ -184,7 +184,8 @@ export type LoginInput = z.infer<typeof loginSchema>
 ```typescript
 // app/api/auth/register/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { User } from '@/entities/user.entity'
 import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { registerSchema } from '@/lib/validations'
 
@@ -205,7 +206,9 @@ export async function POST(request: NextRequest) {
     const { email, password, name } = result.data
 
     // 3. 이메일 중복 확인
-    const existing = await prisma.user.findUnique({ where: { email } })
+    const ds = await getDataSource()
+    const userRepo = ds.getRepository(User)
+    const existing = await userRepo.findOneBy({ email })
     if (existing) {
       return NextResponse.json(
         { error: '이미 가입된 이메일입니다' },
@@ -215,9 +218,8 @@ export async function POST(request: NextRequest) {
 
     // 4. 비밀번호 암호화 + DB 저장
     const hashedPassword = await hashPassword(password)
-    const user = await prisma.user.create({
-      data: { email, password: hashedPassword, name },
-    })
+    const user = userRepo.create({ email, password: hashedPassword, name })
+    await userRepo.save(user)
 
     // 5. JWT 토큰 발급 + 쿠키 저장
     const token = createToken({ userId: user.id, email: user.email })
@@ -245,7 +247,8 @@ export async function POST(request: NextRequest) {
 ```typescript
 // app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { User } from '@/entities/user.entity'
 import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { loginSchema } from '@/lib/validations'
 
@@ -265,7 +268,9 @@ export async function POST(request: NextRequest) {
     const { email, password } = result.data
 
     // 2. 유저 찾기
-    const user = await prisma.user.findUnique({ where: { email } })
+    const ds = await getDataSource()
+    const userRepo = ds.getRepository(User)
+    const user = await userRepo.findOneBy({ email })
     if (!user) {
       return NextResponse.json(
         { error: '이메일 또는 비밀번호가 올바르지 않습니다' },
@@ -373,7 +378,8 @@ export const config = {
 // app/api/auth/me/route.ts
 import { NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { User } from '@/entities/user.entity'
 
 export async function GET() {
   const authUser = await getAuthUser()
@@ -381,7 +387,9 @@ export async function GET() {
     return NextResponse.json({ error: '로그인이 필요합니다' }, { status: 401 })
   }
 
-  const user = await prisma.user.findUnique({
+  const ds = await getDataSource()
+  const userRepo = ds.getRepository(User)
+  const user = await userRepo.findOne({
     where: { id: authUser.userId },
     select: { id: true, email: true, name: true, createdAt: true },
     // select로 필요한 필드만! password는 절대 포함하지 않는다

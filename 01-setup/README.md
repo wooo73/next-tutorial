@@ -166,7 +166,7 @@ npm install bcryptjs jsonwebtoken
 npm install -D @types/bcryptjs @types/jsonwebtoken
 
 # DB 관련 (다음 챕터에서 자세히)
-npm install prisma @prisma/client
+npm install typeorm reflect-metadata pg
 ```
 
 | 패키지 | 용도 | ERP에서는? |
@@ -175,7 +175,7 @@ npm install prisma @prisma/client
 | `zod` | 입력값 검증 | 동일 사용 |
 | `bcryptjs` | 비밀번호 암호화 | Clerk가 대신 처리 |
 | `jsonwebtoken` | JWT 토큰 생성/검증 | Clerk가 대신 처리 |
-| `prisma` | DB ORM | Supabase 클라이언트 사용 |
+| `typeorm` | DB ORM | Supabase 클라이언트 사용 |
 
 ## 6. 폴더 구조 만들기
 
@@ -193,8 +193,8 @@ next-blog/
 ├── components/
 │   └── ui/            # shadcn/ui (자동 생성됨)
 ├── lib/               # 유틸리티 (DB, Auth 헬퍼)
+├── entities/          # TypeORM 엔티티 (다음 챕터)
 ├── types/              # 타입 정의
-├── prisma/             # DB 스키마 (다음 챕터)
 └── public/
 ```
 

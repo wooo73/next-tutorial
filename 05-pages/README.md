@@ -116,20 +116,20 @@ export default function RootLayout({
 ```tsx
 // app/page.tsx
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 // 서버 컴포넌트! "use client" 없음 → DB 직접 조회 가능
 export default async function HomePage() {
   // API 호출 없이 직접 DB 조회
-  const recentPosts = await prisma.post.findMany({
-    where: { published: true, deletedAt: null },
-    include: {
-      author: { select: { name: true } },
-      category: true,
-    },
-    orderBy: { createdAt: 'desc' },
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const recentPosts = await postRepo.find({
+    where: { published: true, deletedAt: IsNull() },
+    relations: { author: true, category: true },
+    order: { createdAt: 'DESC' },
     take: 5,
   })
 
@@ -165,7 +165,7 @@ export default async function HomePage() {
 }
 ```
 
-**핵심**: `await prisma.post.findMany()`를 직접 호출한다.
+**핵심**: `await postRepo.find()`를 직접 호출한다.
 서버 컴포넌트이기 때문에 `fetch('/api/posts')` 없이 DB에 바로 접근 가능하다.
 
 > **ERP 비교**: ERP의 회사 목록 페이지도 서버 컴포넌트에서 Supabase를 직접 조회한다. API route를 거치지 않는다.
@@ -177,7 +177,8 @@ export default async function HomePage() {
 ```tsx
 // app/posts/page.tsx
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -190,25 +191,26 @@ export default async function PostsPage({ searchParams }: PageProps) {
   const page = parseInt(pageStr || '1')
   const limit = 10
 
-  const where = {
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const { Category } = await import('@/entities/category.entity')
+  const categoryRepo = ds.getRepository(Category)
+
+  const where: Record<string, unknown> = {
     published: true,
-    deletedAt: null,
+    deletedAt: IsNull(),
     ...(categoryId && { categoryId }),
   }
 
-  const [posts, total, categories] = await Promise.all([
-    prisma.post.findMany({
+  const [[posts, total], categories] = await Promise.all([
+    postRepo.findAndCount({
       where,
-      include: {
-        author: { select: { name: true } },
-        category: true,
-      },
-      orderBy: { createdAt: 'desc' },
+      relations: { author: true, category: true },
+      order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     }),
-    prisma.post.count({ where }),
-    prisma.category.findMany({ orderBy: { name: 'asc' } }),
+    categoryRepo.find({ order: { name: 'ASC' } }),
   ])
 
   const totalPages = Math.ceil(total / limit)
@@ -279,7 +281,8 @@ export default async function PostsPage({ searchParams }: PageProps) {
 ```tsx
 // app/posts/[id]/page.tsx
 import { notFound } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
+import { getDataSource } from '@/lib/database'
+import { Post } from '@/entities/post.entity'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { PostActions } from './post-actions'  // 클라이언트 컴포넌트
@@ -292,18 +295,16 @@ interface PageProps {
 export default async function PostDetailPage({ params }: PageProps) {
   const { id } = await params  // await!
 
-  const post = await prisma.post.findUnique({
-    where: { id, deletedAt: null },
-    include: {
-      author: { select: { id: true, name: true } },
+  const ds = await getDataSource()
+  const postRepo = ds.getRepository(Post)
+  const post = await postRepo.findOne({
+    where: { id, deletedAt: IsNull() },
+    relations: {
+      author: true,
       category: true,
-      comments: {
-        include: {
-          author: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      },
+      comments: { author: true },
     },
+    order: { comments: { createdAt: 'DESC' } },
   })
 
   if (!post) {

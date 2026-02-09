@@ -8,7 +8,7 @@ LunchLab ERP 프로젝트와 동일한 구조로 블로그를 만들면서 Next.
 |------|-------------|------------|
 | 프레임워크 | Next.js 15 (App Router) | Next.js 15 (App Router) |
 | 언어 | TypeScript | TypeScript |
-| DB | Supabase (PostgreSQL) | Docker PostgreSQL + Prisma |
+| DB | Supabase (PostgreSQL) | Docker PostgreSQL + TypeORM |
 | 인증 | Clerk (OAuth) | ID/Password (bcrypt + JWT) |
 | UI | shadcn/ui + Tailwind | shadcn/ui + Tailwind |
 | 폼 | React Hook Form + Zod | React Hook Form + Zod |
@@ -28,7 +28,7 @@ LunchLab ERP 프로젝트와 동일한 구조로 블로그를 만들면서 Next.
 |------|------|----------|
 | 00 | [프로젝트 개요와 아키텍처](./00-overview/README.md) | Next.js App Router 구조 이해 |
 | 01 | [프로젝트 세팅](./01-setup/README.md) | Next.js, TypeScript, Tailwind, shadcn/ui |
-| 02 | [데이터베이스](./02-database/README.md) | Docker PostgreSQL, Prisma 스키마, 시드 |
+| 02 | [데이터베이스](./02-database/README.md) | Docker PostgreSQL, TypeORM 엔티티, 시드 |
 | 03 | [인증 (ID/Password)](./03-auth/README.md) | bcrypt, JWT, 미들웨어, 세션 관리 |
 | 04 | [API 라우트](./04-api-routes/README.md) | RESTful API, Zod 검증, 에러 처리 |
 | 05 | [페이지 구현](./05-pages/README.md) | Server/Client 컴포넌트, 동적 라우트 |
