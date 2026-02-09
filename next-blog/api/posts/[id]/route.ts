@@ -46,7 +46,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const body = await request.json();
   const result = updatePostSchema.safeParse(body);
   if (!result.success) {
-    return NextResponse.json({ error: result.error.errors[0].message }, { status: 400 });
+    return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
   }
 
   await postRepo.update({ id }, result.data);

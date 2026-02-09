@@ -3,7 +3,7 @@ import { verifyToken } from '@/lib/auth';
 
 const publicPaths = ['/', '/login', '/register', '/api/auth'];
 
-export function middleware(request: NextRequest) {
+export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (publicPaths.some((path) => pathname.startsWith(path))) {

@@ -7,10 +7,11 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  type Relation,
 } from 'typeorm';
-import { User } from './user.entity';
-import { Category } from './category.entity';
-import { Comment } from './comment.entity';
+import type { User } from './user.entity';
+import type { Category } from './category.entity';
+import type { Comment } from './comment.entity';
 
 @Entity('posts')
 export class Post {
@@ -38,17 +39,17 @@ export class Post {
   @Column({ type: 'uuid', name: 'author_id' })
   authorId: string;
 
-  @ManyToOne(() => User, (user) => user.posts)
+  @ManyToOne('User', 'posts')
   @JoinColumn({ name: 'author_id' })
-  author: User;
+  author: Relation<User>;
 
   @Column({ type: 'uuid', name: 'category_id', nullable: true })
   categoryId: string | null;
 
-  @ManyToOne(() => Category, (category) => category.posts)
+  @ManyToOne('Category', 'posts')
   @JoinColumn({ name: 'category_id' })
-  category: Category | null;
+  category: Relation<Category> | null;
 
-  @OneToMany(() => Comment, (comment) => comment.post)
-  comments: Comment[];
+  @OneToMany('Comment', 'post')
+  comments: Relation<Comment[]>;
 }

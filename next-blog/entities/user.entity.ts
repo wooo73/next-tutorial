@@ -1,6 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { Post } from './post.entity';
-import { Comment } from './comment.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, type Relation } from 'typeorm';
+import type { Post } from './post.entity';
+import type { Comment } from './comment.entity';
 
 @Entity('users')
 export class User {
@@ -22,9 +22,9 @@ export class User {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @OneToMany(() => Post, (post) => post.author)
-  posts: Post[];
+  @OneToMany('Post', 'author')
+  posts: Relation<Post[]>;
 
-  @OneToMany(() => Comment, (comment) => comment.author)
-  comments: Comment[];
+  @OneToMany('Comment', 'author')
+  comments: Relation<Comment[]>;
 }

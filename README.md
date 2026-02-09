@@ -34,6 +34,7 @@ LunchLab ERP 프로젝트와 동일한 구조로 블로그를 만들면서 Next.
 | 05 | [페이지 구현](./05-pages/README.md) | Server/Client 컴포넌트, 동적 라우트 |
 | 06 | [컴포넌트 심화](./06-components/README.md) | 폼, 마크다운, 페이지네이션 |
 | 07 | [배포](./07-deployment/README.md) | Vercel 배포, 환경 변수 |
+| 08 | [트러블슈팅](./08-troubleshooting/README.md) | TypeORM, Zod v4, Next.js 16 이슈 |
 
 ## 시작하기
 

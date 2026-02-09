@@ -73,10 +73,10 @@ TypeORM은 데코레이터를 사용하므로, `tsconfig.json`에 옵션을 추�
 }
 ```
 
-### .env 작성
+### .env 작성 (next-blog 폴더 안에 생성)
 
 ```env
-# .env
+# next-blog/.env
 DATABASE_URL="postgresql://blog:blog1234@localhost:5432/blog"
 ```
 
@@ -98,10 +98,10 @@ TypeORM 엔티티 (클래스) → (synchronize) → PostgreSQL 테이블
 // entities/user.entity.ts
 import {
   Entity, PrimaryGeneratedColumn, Column,
-  CreateDateColumn, UpdateDateColumn, OneToMany,
+  CreateDateColumn, UpdateDateColumn, OneToMany, type Relation,
 } from 'typeorm'
-import { Post } from './post.entity'
-import { Comment } from './comment.entity'
+import type { Post } from './post.entity'
+import type { Comment } from './comment.entity'
 
 @Entity('users')
 export class User {
@@ -123,11 +123,11 @@ export class User {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date
 
-  @OneToMany(() => Post, (post) => post.author)
-  posts: Post[]
+  @OneToMany('Post', 'author')
+  posts: Relation<Post[]>
 
-  @OneToMany(() => Comment, (comment) => comment.author)
-  comments: Comment[]
+  @OneToMany('Comment', 'author')
+  comments: Relation<Comment[]>
 }
 ```
 
@@ -137,9 +137,9 @@ export class User {
 // entities/category.entity.ts
 import {
   Entity, PrimaryGeneratedColumn, Column,
-  CreateDateColumn, OneToMany,
+  CreateDateColumn, OneToMany, type Relation,
 } from 'typeorm'
-import { Post } from './post.entity'
+import type { Post } from './post.entity'
 
 @Entity('categories')
 export class Category {
@@ -155,8 +155,8 @@ export class Category {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 
-  @OneToMany(() => Post, (post) => post.category)
-  posts: Post[]
+  @OneToMany('Post', 'category')
+  posts: Relation<Post[]>
 }
 ```
 
@@ -167,10 +167,11 @@ export class Category {
 import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn,
+  type Relation,
 } from 'typeorm'
-import { User } from './user.entity'
-import { Category } from './category.entity'
-import { Comment } from './comment.entity'
+import type { User } from './user.entity'
+import type { Category } from './category.entity'
+import type { Comment } from './comment.entity'
 
 @Entity('posts')
 export class Post {
@@ -198,19 +199,19 @@ export class Post {
   @Column({ type: 'uuid', name: 'author_id' })
   authorId: string
 
-  @ManyToOne(() => User, (user) => user.posts)
+  @ManyToOne('User', 'posts')
   @JoinColumn({ name: 'author_id' })
-  author: User
+  author: Relation<User>
 
   @Column({ type: 'uuid', name: 'category_id', nullable: true })
   categoryId: string | null
 
-  @ManyToOne(() => Category, (category) => category.posts)
+  @ManyToOne('Category', 'posts')
   @JoinColumn({ name: 'category_id' })
-  category: Category | null
+  category: Relation<Category> | null
 
-  @OneToMany(() => Comment, (comment) => comment.post)
-  comments: Comment[]
+  @OneToMany('Comment', 'post')
+  comments: Relation<Comment[]>
 }
 ```
 
@@ -221,9 +222,10 @@ export class Post {
 import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn,
+  type Relation,
 } from 'typeorm'
-import { User } from './user.entity'
-import { Post } from './post.entity'
+import type { User } from './user.entity'
+import type { Post } from './post.entity'
 
 @Entity('comments')
 export class Comment {
@@ -242,16 +244,16 @@ export class Comment {
   @Column({ type: 'uuid', name: 'author_id' })
   authorId: string
 
-  @ManyToOne(() => User, (user) => user.comments)
+  @ManyToOne('User', 'comments')
   @JoinColumn({ name: 'author_id' })
-  author: User
+  author: Relation<User>
 
   @Column({ type: 'uuid', name: 'post_id' })
   postId: string
 
-  @ManyToOne(() => Post, (post) => post.comments)
+  @ManyToOne('Post', 'comments')
   @JoinColumn({ name: 'post_id' })
-  post: Post
+  post: Relation<Post>
 }
 ```
 
@@ -266,6 +268,8 @@ export class Comment {
 | `@Column({ name: 'snake_case' })` | - | 실제 컬럼명 지정 |
 | `@Entity('table_name')` | - | 실제 테이블명 지정 |
 | `@ManyToOne` / `@OneToMany` | `FOREIGN KEY` | 테이블 간 관계 |
+| `import type` + `Relation<>` | - | 순환 참조 방지 (엔티티끼리 서로 import할 때 필수) |
+| `@OneToMany('Post', 'author')` | - | 문자열로 엔티티 참조 (순환 참조 방지) |
 
 > **ERP 비교**: ERP의 `types/supabase.ts`에 타입이 정의되고, DB 스키마는 Supabase Dashboard에서 관리한다. TypeORM은 엔티티 클래스 하나로 스키마 + 타입을 동시에 정의하는 장점이 있다.
 

@@ -18,11 +18,12 @@ export const createPostSchema = z.object({
   title: z.string().min(1, '제목을 입력하세요').max(200, '제목은 200자 이하'),
   content: z.string().min(1, '내용을 입력하세요'),
   categoryId: z.string().uuid().optional(),
-  published: z.boolean().default(false),
+  published: z.boolean(),
 });
 
 export const updatePostSchema = createPostSchema.partial();
 // partial() = 모든 필드가 optional이 된다
 
-export type CreatePostInput = z.infer<typeof createPostSchema>;
-export type UpdatePostInput = z.infer<typeof updatePostSchema>;
+// z.input = 폼에서 입력하는 타입 (useForm용)
+export type CreatePostInput = z.input<typeof createPostSchema>;
+export type UpdatePostInput = z.input<typeof updatePostSchema>;

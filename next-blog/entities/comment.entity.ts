@@ -6,9 +6,10 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  type Relation,
 } from 'typeorm';
-import { User } from './user.entity';
-import { Post } from './post.entity';
+import type { User } from './user.entity';
+import type { Post } from './post.entity';
 
 @Entity('comments')
 export class Comment {
@@ -27,14 +28,14 @@ export class Comment {
   @Column({ type: 'uuid', name: 'author_id' })
   authorId: string;
 
-  @ManyToOne(() => User, (user) => user.comments)
+  @ManyToOne('User', 'comments')
   @JoinColumn({ name: 'author_id' })
-  author: User;
+  author: Relation<User>;
 
   @Column({ type: 'uuid', name: 'post_id' })
   postId: string;
 
-  @ManyToOne(() => Post, (post) => post.comments)
+  @ManyToOne('Post', 'comments')
   @JoinColumn({ name: 'post_id' })
-  post: Post;
+  post: Relation<Post>;
 }
